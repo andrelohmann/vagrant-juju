@@ -1,0 +1,16 @@
+[Unit]
+Description=react-app npm start
+After=network.target
+
+[Service]
+Environment=PORT=3000
+WorkingDirectory=/home/vagrant/application
+ExecStart=/usr/bin/npm start
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=react-app
+User=vagrant
+
+[Install]
+WantedBy=multi-user.target

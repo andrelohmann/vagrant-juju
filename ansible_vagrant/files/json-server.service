@@ -1,0 +1,15 @@
+[Unit]
+Description=json-server to simulate a REST Backend for our react app
+After=network.target
+
+[Service]
+WorkingDirectory=/home/vagrant/application
+ExecStart=/home/vagrant/application/node_modules/.bin/json-server db.json --watch db.json --port 5000  --host 0.0.0.0
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=json-server
+User=vagrant
+
+[Install]
+WantedBy=multi-user.target

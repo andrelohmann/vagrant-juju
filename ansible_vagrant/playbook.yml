@@ -1,0 +1,108 @@
+---
+
+- hosts: all
+  become: true
+  become_method: sudo
+
+  vars:
+    juju_domain: juju.lokal
+
+  roles:
+  - andrelohmann.root_colored_prompt
+
+  tasks:
+
+  - name: install juju ppa
+    apt_repository:
+      repo: ppa:juju/stable
+
+  - name: APT | Install juju
+    apt:
+      name: "{{ packages }}"
+      state: latest
+      dpkg_options: 'force-confnew,force-confdef'
+      autoclean: yes
+      autoremove: yes
+      update_cache: yes
+      cache_valid_time: 3600
+    vars:
+      packages:
+      - juju
+      - nginx
+
+  - name: Add the user 'vagrant' to group 'lxd'
+    user:
+      name: vagrant
+      groups: lxd
+      append: yes
+
+  - name: reset ssh connection
+    meta: reset_connection
+
+  - name: create lxd cloud provider, wrapped in sg lxd, as the group isn't avail in session before relogin
+    shell: "sg lxd -c \"{{ item }}\""
+    with_items:
+    - lxd init --auto
+    - lxc network set lxdbr0 ipv6.address none
+    - juju bootstrap localhost overlord
+    become: yes
+    become_user: vagrant
+
+  - name: Generate an OpenSSL private key with a different size (2048 bits)
+    openssl_privatekey:
+      path: /etc/nginx/cert.key
+      size: 2048
+
+  - name: Generate an OpenSSL Certificate Signing Request
+    openssl_csr:
+      path: /etc/nginx/cert.csr
+      privatekey_path: /etc/nginx/cert.key
+      common_name: "{{ juju_domain }}"
+
+  - name: Generate a Self Signed OpenSSL certificate
+    openssl_certificate:
+      path: /etc/nginx/cert.crt
+      privatekey_path: /etc/nginx/cert.key
+      csr_path: /etc/nginx/cert.csr
+      provider: selfsigned
+
+  - name: Fetching the controller ip
+    shell: juju gui --hide-credential
+    register: controllerResult
+    become: yes
+    become_user: vagrant
+
+  - name: install charm using snap
+    snap:
+      name: charm
+      classic: yes
+
+  - set_fact:
+      controller_ip: "{{ controllerResult.stderr_lines[1] | regex_search('//([^:]+)','\\1') | first }}"
+
+  - name: Create nginx site
+    template:
+      src: juju.conf.j2
+      dest: /etc/nginx/sites-available/juju.conf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Create a symbolic link
+    file:
+      src: /etc/nginx/sites-available/juju.conf
+      dest: /etc/nginx/sites-enabled/juju.conf
+      owner: root
+      group: root
+      state: link
+
+  - name: restart nginx
+    systemd:
+      name: nginx
+      state: restarted
+
+  - name: display gui url
+    debug:
+      msg: "Run 'juju gui' from cli to fetch credentials, then open https://{{ juju_domain }}/gui/ in your browser"
+
+...
